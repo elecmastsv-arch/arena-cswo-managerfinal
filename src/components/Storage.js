@@ -46,12 +46,19 @@ function cleanup(){
 
 // --- NUEVAS FUNCIONES ---
 
-// Asegura que exista el array de jugadores
 function ensurePlayers(t){
   if(!t.players) t.players = [];
 }
 
-// Marca jugador como dropeado
+// Agregar nuevo jugador
+export function addPlayer(t, name){
+  ensurePlayers(t);
+  const id = t.players.length ? Math.max(...t.players.map(p=>p.id))+1 : 1;
+  t.players.push({ id, name, dropped:false });
+  saveTournament(t);
+  return t;
+}
+
 export function dropPlayer(t, playerId){
   ensurePlayers(t);
   t.players = t.players.map(p => p.id === playerId ? {...p, dropped:true} : p);
@@ -59,7 +66,6 @@ export function dropPlayer(t, playerId){
   return t;
 }
 
-// Reintegra jugador
 export function undropPlayer(t, playerId){
   ensurePlayers(t);
   t.players = t.players.map(p => p.id === playerId ? {...p, dropped:false} : p);
@@ -67,7 +73,6 @@ export function undropPlayer(t, playerId){
   return t;
 }
 
-// Cambia estado
 export function toggleDropPlayer(t, playerId){
   ensurePlayers(t);
   t.players = t.players.map(p => p.id === playerId ? {...p, dropped:!p.dropped} : p);
