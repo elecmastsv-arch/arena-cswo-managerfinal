@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react'
 import Background from './Background'
-import { listTournaments, getTournament, deleteTournament, saveTournament, toggleDropPlayer } from './Storage'
+import { listTournaments, getTournament, deleteTournament, addPlayer, toggleDropPlayer } from './Storage'
 
 export default function TournamentSelector({ onCreate, onOpen, onDelete }){
   const [name,setName] = useState('Mi Torneo CSWO')
   const [items, setItems] = useState(listTournaments())
   const [selected, setSelected] = useState(null)
+  const [playerName, setPlayerName] = useState('')
 
   useEffect(()=>{ setItems(listTournaments()) },[])
 
   const handleOpen = (slug)=>{
     const t = getTournament(slug)
     setSelected(t)
+  }
+
+  const handleAddPlayer = ()=>{
+    if(!playerName.trim() || !selected) return
+    const updated = addPlayer(selected, playerName.trim())
+    setSelected({...updated})
+    setPlayerName('')
   }
 
   const handleToggleDrop = (playerId)=>{
@@ -59,6 +67,22 @@ export default function TournamentSelector({ onCreate, onOpen, onDelete }){
         {selected && (
           <div className='card mt-8'>
             <h2 className='text-xl font-bold text-cyan-400 mb-3'>Jugadores de {selected.meta?.name}</h2>
+            
+            <div className='flex gap-3 mb-4'>
+              <input
+                className='input flex-grow'
+                value={playerName}
+                onChange={e=>setPlayerName(e.target.value)}
+                placeholder='Nombre del jugador'
+              />
+              <button
+                className='px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 font-semibold'
+                onClick={handleAddPlayer}
+              >
+                ➕ Agregar
+              </button>
+            </div>
+
             {(!selected.players || selected.players.length===0) ? (
               <p className='text-gray-400'>No hay jugadores registrados.</p>
             ):(
