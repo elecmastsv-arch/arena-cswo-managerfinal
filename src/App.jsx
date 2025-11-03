@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import jsPDF from 'jspdf'
 import Background from './components/Background'
-import Selector from './components/TournamentSelector'
 import { listTournaments, getTournament, saveTournament, deleteTournament, slugify } from './components/Storage'
 
 const RESULT = { P1:'P1', P2:'P2', DRAW:'DRAW', BYE:'BYE' }
