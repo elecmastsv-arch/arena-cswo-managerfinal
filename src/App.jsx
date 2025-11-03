@@ -480,7 +480,7 @@ export default function App({ initialTournament, onTournamentChange, initialView
           <div className='flex items-center justify-between gap-3'>
             <div>
               <h2 className='text-xl font-bold text-cyan-300'>Arena CSWO Manager</h2>
-              <p className='text-gray-300 text-sm'>Gestor de torneos TCG — Tema azul neón.</p>
+              <p className='text-gray-300 text-sm'>Somos la comunidad de MYL mas grande de Chile</p>
             </div>
             <div className='flex gap-2'>
               <button className='btn' onClick={genLink}>Generar enlace público</button>
