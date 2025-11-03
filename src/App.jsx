@@ -70,15 +70,17 @@ function determineResult(m){
   return null
 }
 
-export default function App({ initialTournament, onTournamentChange }){
+export default function App({ initialTournament, onTournamentChange, initialViewMode, viewSlug }){
   const qp = new URLSearchParams(location.search)
-  const viewSlug = qp.get('t')
-  const isViewer = qp.has('view') || (qp.get('mode')==='view')
+  // Usar el viewSlug pasado como prop o el de la URL
+  const urlViewSlug = viewSlug || qp.get('t')
+  // Determinar si estamos en modo visor por props o URL
+  const isViewer = initialViewMode || qp.has('view') || (qp.get('mode')==='view')
 
-  const [mode, setMode] = useState(viewSlug && isViewer ? 'viewer' : initialTournament ? 'organizer' : 'selector')
+  const [mode, setMode] = useState(urlViewSlug && isViewer ? 'viewer' : initialTournament ? 'organizer' : 'selector')
   const [t, setT] = useState(()=> {
-    if (viewSlug) {
-      return getTournament(viewSlug) || emptyTournament('Torneo CSWO')
+    if (urlViewSlug) {
+      return getTournament(urlViewSlug) || emptyTournament('Torneo CSWO')
     } else if (initialTournament) {
       return initialTournament
     } else {
@@ -160,9 +162,14 @@ export default function App({ initialTournament, onTournamentChange }){
     doc.save(type==='final' ? 'CSWO_Clasificacion_Final.pdf' : 'CSWO_Clasificacion.pdf')
   }
   const genLink = () => {
-    const url = new URL(location.href)
-    url.searchParams.set('t', t.slug); url.searchParams.set('view','1')
-    navigator.clipboard.writeText(url.toString()); alert('Enlace copiado:\\n'+url.toString())
+    // Crear una URL absoluta basada en la ubicación actual
+    const url = new URL(window.location.origin)
+    // Agregar los parámetros necesarios para el modo visor
+    url.searchParams.set('t', t.slug)
+    url.searchParams.set('view', '1')
+    // Copiar al portapapeles y mostrar un mensaje de confirmación
+    navigator.clipboard.writeText(url.toString())
+    alert('Enlace público copiado al portapapeles:\n\n' + url.toString() + '\n\nComparte este enlace para que cualquiera pueda ver los resultados del torneo sin necesidad de login.')
   }
 
   // Ya no usamos el modo selector por defecto, pero lo mantenemos para compatibilidad con vistas existentes
@@ -172,20 +179,61 @@ export default function App({ initialTournament, onTournamentChange }){
                      onDelete={(slug)=>{ deleteTournament(slug); location.reload() }} />
   }
 
-  if(viewSlug && (isViewer || mode==='viewer')){
+  if(urlViewSlug && (isViewer || mode==='viewer')){
     return (
       <div className='min-h-screen text-white'>
         <Background/>
         <header className='sticky top-0 z-10 backdrop-blur bg-black/40 border-b border-white/10'>
           <div className='max-w-6xl mx-auto px-4 py-4 flex items-center justify-between'>
-            <h1 className='text-2xl font-extrabold neon-title'>COMUNIDAD CSWO</h1>
+            <div>
+              <h1 className='text-2xl font-extrabold neon-title'>COMUNIDAD CSWO</h1>
+              <div className='text-xs bg-cyan-500/20 text-cyan-300 px-2 py-1 rounded inline-block mt-1'>Vista pública de solo lectura</div>
+            </div>
             <Status label={stateLabel} round={roundCounter} />
           </div>
         </header>
         <main className='max-w-6xl mx-auto px-4 py-6'>
           <section className='card'>
-            <h2 className='text-xl font-bold text-cyan-300'>Torneo: {t.meta.name}</h2>
-            <p className='text-gray-300 text-sm'>Fecha: {t.meta.date}</p>
+            <div className='flex items-center justify-between flex-wrap gap-2'>
+              <div>
+                <h2 className='text-xl font-bold text-cyan-300'>Torneo: {t.meta.name}</h2>
+                <p className='text-gray-300 text-sm'>Fecha: {t.meta.date}</p>
+              </div>
+              <div className='flex gap-2'>
+                <button onClick={()=>exportPDF('standings')} className='btn-ghost text-sm flex items-center gap-1'>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                  Descargar PDF
+                </button>
+                <button onClick={() => {
+                  const shareUrl = window.location.href;
+                  if (navigator.share) {
+                    navigator.share({
+                      title: `Torneo ${t.meta.name} - CSWO`,
+                      text: `Resultados del torneo ${t.meta.name} de CSWO`,
+                      url: shareUrl,
+                    })
+                  } else {
+                    navigator.clipboard.writeText(shareUrl);
+                    alert('Enlace copiado al portapapeles. \nCompártelo en tus redes sociales!');
+                  }
+                }} className='btn-ghost text-sm flex items-center gap-1'>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                  </svg>
+                  Compartir
+                </button>
+              </div>
+            </div>
           </section>
           <section className='card mt-4'>
             <h3 className='text-lg font-semibold text-cyan-300'>Rondas</h3>
@@ -197,9 +245,31 @@ export default function App({ initialTournament, onTournamentChange }){
                     {r.pairings.map(m=>{
                       const p1=byId[m.p1]?.name||'??'; const p2=m.p2? (byId[m.p2]?.name||'??') : 'BYE'
                       return (
-                        <div key={m.id} className='flex flex-wrap items-center justify-between border-b border-white/10 pb-2'>
-                          <div><span className='text-gray-400 text-xs mr-2'>Mesa {m.table}</span>{p1} vs {p2}</div>
-                          <div className='text-sm text-gray-300'>{m.p1Wins||0} - {m.p2Wins||0} {m.result? `• ${m.result==='P1'?'Gana A':m.result==='P2'?'Gana B':'Empate'}`:''}</div>
+                        <div key={m.id} className='flex flex-wrap items-center justify-between border-b border-white/10 pb-2 hover:bg-white/5 p-1 rounded'>
+                          <div>
+                            <span className='text-gray-400 text-xs mr-2 bg-white/10 px-1.5 py-0.5 rounded'>Mesa {m.table}</span>
+                            <span className={byId[m.p1]?.dropped ? 'line-through text-gray-400' : ''}>{p1}</span>
+                            <span className='text-gray-500 mx-1'>vs</span>
+                            <span className={m.p2 && byId[m.p2]?.dropped ? 'line-through text-gray-400' : ''}>{p2}</span>
+                            {byId[m.p1]?.dropped && <span className='text-yellow-400 text-xs ml-1'>(Drop)</span>}
+                            {m.p2 && byId[m.p2]?.dropped && <span className='text-yellow-400 text-xs ml-1'>(Drop)</span>}
+                          </div>
+                          <div className='text-sm'>
+                            {m.result ? (
+                              <div className='flex items-center gap-2'>
+                                <span className={`px-2 py-0.5 rounded ${m.result === 'P1' ? 'bg-green-500/20 text-green-300' : 
+                                  m.result === 'P2' ? 'bg-blue-500/20 text-blue-300' : 
+                                  'bg-yellow-500/20 text-yellow-300'}`}>
+                                  {m.p1Wins || 0} - {m.p2Wins || 0}
+                                </span>
+                                <span className='text-gray-300'>
+                                  {m.result === 'P1' ? 'Gana ' + p1 : 
+                                   m.result === 'P2' ? 'Gana ' + p2 : 
+                                   'Empate'}
+                                </span>
+                              </div>
+                            ) : <span className='text-gray-500 italic'>Pendiente</span>}
+                          </div>
                         </div>
                       )
                     })}
@@ -209,20 +279,68 @@ export default function App({ initialTournament, onTournamentChange }){
             }
           </section>
           <section className='card mt-4'>
-            <h3 className='text-lg font-semibold text-cyan-300'>Clasificación</h3>
+            <div className='flex items-center justify-between'>
+              <h3 className='text-lg font-semibold text-cyan-300'>Clasificación</h3>
+              {t.finished && <div className='bg-red-500/20 text-red-300 px-2 py-1 rounded text-xs'>TORNEO FINALIZADO</div>}
+            </div>
             {standings.length===0? <p className='text-gray-400'>Sin datos aún.</p> :
-              <table className='w-full text-left border-collapse mt-2'>
-                <thead><tr className='table-head'><th>#</th><th>Jugador</th><th>Pts</th><th>W</th><th>D</th><th>L</th><th>OMW%</th></tr></thead>
-                <tbody>{standings.map(p=>(
-                  <tr key={p.id} className={`border-b border-white/10 ${p.rank<=3?'bg-cyan-500/10':''}`}>
-                    <td>{p.rank}</td><td className={p.dropped ? 'line-through text-gray-400' : ''}>{p.name}{p.dropped ? ' (Drop)' : ''}</td><td>{p.points}</td><td>{p.wins}</td><td>{p.draws}</td><td>{p.losses}</td><td>{(p.omw*100).toFixed(1)}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
+              <div className='mt-4 overflow-x-auto'>
+                <table className='w-full text-left border-collapse'>
+                  <thead>
+                    <tr className='bg-gradient-to-r from-cyan-900/40 to-blue-900/40'>
+                      <th className='px-3 py-2 rounded-l-lg'>#</th>
+                      <th className='px-3 py-2'>Jugador</th>
+                      <th className='px-3 py-2 text-center'>Pts</th>
+                      <th className='px-3 py-2 text-center'>W</th>
+                      <th className='px-3 py-2 text-center'>D</th>
+                      <th className='px-3 py-2 text-center'>L</th>
+                      <th className='px-3 py-2 text-right rounded-r-lg'>OMW%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {standings.map(p=>(
+                      <tr key={p.id} className={`border-b border-white/10 hover:bg-white/5 ${p.rank===1?'bg-amber-500/10':p.rank===2?'bg-slate-400/10':p.rank===3?'bg-yellow-700/10':''}`}>
+                        <td className='px-3 py-2.5'>
+                          {p.rank <= 3 && <span className={`mr-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs ${p.rank===1?'bg-amber-500/20 text-amber-300':p.rank===2?'bg-slate-400/20 text-slate-300':p.rank===3?'bg-yellow-700/20 text-yellow-600':''}`}>#{p.rank}</span>}
+                          {p.rank > 3 && p.rank}
+                        </td>
+                        <td className={`px-3 py-2.5 ${p.dropped ? 'line-through text-gray-400' : ''}`}>
+                          {p.name}
+                          {p.dropped && <span className='ml-2 bg-yellow-500/20 text-yellow-300 text-xs px-1.5 py-0.5 rounded'>Drop</span>}
+                        </td>
+                        <td className='px-3 py-2.5 text-center font-semibold'>{p.points}</td>
+                        <td className='px-3 py-2.5 text-center'>{p.wins}</td>
+                        <td className='px-3 py-2.5 text-center'>{p.draws}</td>
+                        <td className='px-3 py-2.5 text-center'>{p.losses}</td>
+                        <td className='px-3 py-2.5 text-right'>{(p.omw*100).toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className='mt-3 text-xs text-gray-400'>
+                  <span className='inline-block mr-3'>Pts: Puntos</span>
+                  <span className='inline-block mr-3'>W: Victorias</span>
+                  <span className='inline-block mr-3'>D: Empates</span>
+                  <span className='inline-block mr-3'>L: Derrotas</span>
+                  <span className='inline-block'>OMW%: Porcentaje de victorias de oponentes</span>
+                </div>
+              </div>
             }
           </section>
         </main>
-        <footer className='text-center text-xs text-gray-400 py-8'>By CSWO Team</footer>
+        <footer className='text-center text-gray-400 py-8'>
+          <div className='flex justify-center items-center gap-3 text-sm mb-2'>
+            <div className='px-2 py-1 bg-white/5 rounded-lg'>
+              <span className='text-cyan-300 mr-1'>{t.players.length}</span>Jugadores
+            </div>
+            <div className='px-2 py-1 bg-white/5 rounded-lg'>
+              <span className='text-cyan-300 mr-1'>{t.rounds.length}</span>Rondas
+            </div>
+          </div>
+          <div className='text-xs'>
+            © {new Date().getFullYear()} CSWO Team - Arena Manager
+          </div>
+        </footer>
       </div>
     )
   }
