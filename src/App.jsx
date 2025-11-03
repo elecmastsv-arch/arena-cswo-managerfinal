@@ -50,7 +50,7 @@ function swissPairings(t){
 
   if(ordered.length % 2 === 1){
     const cand = [...ordered].reverse().find(p=> !t.rounds.some(r=> r.pairings.some(m=> m.p1===p.id && m.result===RESULT.BYE )))
-    if(cand){ ids.splice(ids.indexOf(cand.id),1); pairs.push({ id:uid('m'), table: base+pairs.length, p1:cand.id, p2:null, p1Wins:0, p2Wins:0, result:RESULT.BYE }) }
+    if(cand){ ids.splice(ids.indexOf(cand.id),1); pairs.push({ id:uid('m'), table: base+pairs.length, p1:cand.id, p2:null, p1Wins:2, p2Wins:0, result:RESULT.BYE }) }
   }
   while(ids.length){
     const a = ids.shift()
@@ -80,7 +80,15 @@ export default function App({ initialTournament, onTournamentChange, initialView
   const [mode, setMode] = useState(urlViewSlug && isViewer ? 'viewer' : initialTournament ? 'organizer' : 'selector')
   const [t, setT] = useState(()=> {
     if (urlViewSlug) {
-      return getTournament(urlViewSlug) || emptyTournament('Torneo CSWO')
+      const tournament = getTournament(urlViewSlug);
+      // Si no encontramos el torneo en localStorage, creamos uno vacío pero marcamos que no hay datos
+      if (!tournament && isViewer) {
+        const emptyT = emptyTournament('Torneo CSWO');
+        emptyT._noLocalData = true; // Marca para indicar que no hay datos locales
+        emptyT.slug = urlViewSlug; // Mantenemos el slug original
+        return emptyT;
+      }
+      return tournament || emptyTournament('Torneo CSWO');
     } else if (initialTournament) {
       return initialTournament
     } else {
@@ -164,12 +172,82 @@ export default function App({ initialTournament, onTournamentChange, initialView
   const genLink = () => {
     // Crear una URL absoluta basada en la ubicación actual
     const url = new URL(window.location.origin)
+    
     // Agregar los parámetros necesarios para el modo visor
     url.searchParams.set('t', t.slug)
     url.searchParams.set('view', '1')
-    // Copiar al portapapeles y mostrar un mensaje de confirmación
-    navigator.clipboard.writeText(url.toString())
-    alert('Enlace público copiado al portapapeles:\n\n' + url.toString() + '\n\nComparte este enlace para que cualquiera pueda ver los resultados del torneo sin necesidad de login.')
+    
+    // Generar un código de torneo portable
+    const tournamentData = JSON.stringify(t);
+    
+    // Mostrar un diálogo con opciones
+    const container = document.createElement('div');
+    container.innerHTML = `
+      <div style="padding: 20px; max-width: 500px; background: rgba(13,17,23,0.95); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
+        <h3 style="margin-top: 0; color: #22d3ee; font-size: 18px;">Compartir torneo</h3>
+        <p style="margin-bottom: 15px; color: #e5e7eb; font-size: 14px;">
+          Hay dos formas de compartir este torneo:
+        </p>
+        
+        <div style="margin-bottom: 20px;">
+          <h4 style="color: #e5e7eb; font-size: 16px; margin-bottom: 10px;">1. Enlace público (solo vista)</h4>
+          <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+            <input id="publicLink" readonly value="${url.toString()}" style="flex-grow: 1; padding: 8px; border-radius: 5px; background: rgba(255,255,255,0.1); color: white; border: none;">
+            <button id="copyLinkBtn" style="padding: 8px; background: #0284c7; color: white; border: none; border-radius: 5px;">Copiar</button>
+          </div>
+          <p style="color: #9ca3af; font-size: 12px; margin-top: 5px;">
+            Este enlace permite ver el torneo pero NO contiene los datos. Si tu servidor no está online, los datos no serán visibles.
+          </p>
+        </div>
+        
+        <div>
+          <h4 style="color: #e5e7eb; font-size: 16px; margin-bottom: 10px;">2. Código portable (contiene datos)</h4>
+          <p style="color: #9ca3af; font-size: 12px; margin-bottom: 10px;">
+            Usa esta opción para generar un archivo con todos los datos del torneo que se puede importar en otro dispositivo.
+          </p>
+          <div style="display: flex; justify-content: space-between;">
+            <button id="exportJsonBtn" style="padding: 8px 12px; background: #0284c7; color: white; border: none; border-radius: 5px;">
+              Exportar JSON
+            </button>
+            <button id="closeBtn" style="padding: 8px 12px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 5px;">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    const modal = document.createElement('div');
+    modal.style = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 9999;';
+    modal.appendChild(container);
+    document.body.appendChild(modal);
+    
+    // Eventos para los botones
+    document.getElementById('copyLinkBtn').addEventListener('click', () => {
+      const linkInput = document.getElementById('publicLink');
+      linkInput.select();
+      document.execCommand('copy');
+      alert('Enlace copiado al portapapeles');
+    });
+    
+    document.getElementById('exportJsonBtn').addEventListener('click', () => {
+      const data = JSON.stringify(t, null, 2);
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `torneo-${t.slug}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    
+    document.getElementById('closeBtn').addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+    
+    modal.addEventListener('click', e => {
+      if (e.target === modal) document.body.removeChild(modal);
+    });
   }
 
   // Ya no usamos el modo selector por defecto, pero lo mantenemos para compatibilidad con vistas existentes
@@ -180,6 +258,48 @@ export default function App({ initialTournament, onTournamentChange, initialView
   }
 
   if(urlViewSlug && (isViewer || mode==='viewer')){
+    // Si no hay datos locales disponibles, mostramos un mensaje especial
+    if (t._noLocalData) {
+      return (
+        <div className='min-h-screen text-white'>
+          <Background/>
+          <header className='sticky top-0 z-10 backdrop-blur bg-black/40 border-b border-white/10'>
+            <div className='max-w-6xl mx-auto px-4 py-4 flex items-center justify-between'>
+              <div>
+                <h1 className='text-2xl font-extrabold neon-title'>COMUNIDAD CSWO</h1>
+                <div className='text-xs bg-cyan-500/20 text-cyan-300 px-2 py-1 rounded inline-block mt-1'>Vista pública de solo lectura</div>
+              </div>
+            </div>
+          </header>
+          <main className='max-w-md mx-auto px-4 py-12'>
+            <div className='card'>
+              <div className='text-center'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className='mx-auto text-yellow-400/70 mb-4'>
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <h2 className='text-xl font-bold text-cyan-300 mb-2'>No se encontraron datos locales</h2>
+                <p className='text-gray-300 mb-6'>No pudimos encontrar los datos del torneo <strong>{urlViewSlug}</strong> en este dispositivo. Si estás viendo este enlace desde otro dispositivo, necesitarás importar el archivo JSON del torneo.</p>
+                
+                <div className='space-y-4'>
+                  <a href={`?import=1`} className='btn block w-full py-3'>
+                    Importar datos del torneo
+                  </a>
+                  <p className='text-sm text-gray-400'>Solicita al organizador del torneo que te envíe el archivo JSON del torneo. El organizador puede generar este archivo desde la opción "Compartir" en el panel principal.</p>
+                </div>
+              </div>
+            </div>
+          </main>
+          <footer className='text-center text-gray-400 py-8'>
+            <div className='text-xs'>
+              © {new Date().getFullYear()} CSWO Team - Arena Manager
+            </div>
+          </footer>
+        </div>
+      )
+    }
+    
     return (
       <div className='min-h-screen text-white'>
         <Background/>
