@@ -16,15 +16,23 @@ function emptyTournament(name='Mi Torneo CSWO'){
 }
 function calcStandings(t){
   const res = {}
-  t.players.forEach(p => res[p.id] = { id:p.id, name:p.name, points:0, wins:0, draws:0, losses:0, omw:0, _mw:0, opps:new Set(), byes:0 })
+  t.players.forEach(p => res[p.id] = { id:p.id, name:p.name, points:0, wins:0, draws:0, losses:0, omw:0, _mw:0, opps:new Set(), byes:0, dropped:p.dropped || false })
   t.rounds.forEach(r => r.pairings.forEach(m => {
     if(!m.p2 && m.result===RESULT.BYE){ const a=res[m.p1]; if(!a) return; a.points+=POINTS.BYE; a.wins++; a.byes++; return }
     const a=res[m.p1]; const b=res[m.p2]; if(!a||!b) return
     a.opps.add(b.id); b.opps.add(a.id)
     if(!m.result) return
-    if(m.result===RESULT.P1){ a.points+=POINTS.WIN; a.wins++; b.losses++ }
-    else if(m.result===RESULT.P2){ b.points+=POINTS.WIN; b.wins++; a.losses++ }
-    else if(m.result===RESULT.DRAW){ a.points+=POINTS.DRAW; b.points+=POINTS.DRAW; a.draws++; b.draws++ }
+    // Si ambos jugadores están en estado drop, ambos reciben 0 puntos
+    if(a.dropped && b.dropped) {
+      // No se otorgan puntos, pero se registra como una partida jugada
+      a.losses++; b.losses++;
+    } else if(m.result===RESULT.P1){ 
+      a.points+=POINTS.WIN; a.wins++; b.losses++ 
+    } else if(m.result===RESULT.P2){ 
+      b.points+=POINTS.WIN; b.wins++; a.losses++ 
+    } else if(m.result===RESULT.DRAW){ 
+      a.points+=POINTS.DRAW; b.points+=POINTS.DRAW; a.draws++; b.draws++ 
+    }
   }))
   const mw = p => { const tot=p.wins+p.draws+p.losses; return tot? (p.wins+0.5*p.draws)/tot : 0 }
   Object.values(res).forEach(p => p._mw = mw(p))
@@ -62,14 +70,28 @@ function determineResult(m){
   return null
 }
 
-export default function App(){
+export default function App({ initialTournament, onTournamentChange }){
   const qp = new URLSearchParams(location.search)
   const viewSlug = qp.get('t')
   const isViewer = qp.has('view') || (qp.get('mode')==='view')
 
-  const [mode, setMode] = useState(viewSlug && isViewer ? 'viewer' : 'selector')
-  const [t, setT] = useState(()=> viewSlug ? (getTournament(viewSlug)||emptyTournament('Torneo CSWO')) : emptyTournament('Torneo CSWO'))
-  useEffect(()=>{ saveTournament(t) }, [t])
+  const [mode, setMode] = useState(viewSlug && isViewer ? 'viewer' : initialTournament ? 'organizer' : 'selector')
+  const [t, setT] = useState(()=> {
+    if (viewSlug) {
+      return getTournament(viewSlug) || emptyTournament('Torneo CSWO')
+    } else if (initialTournament) {
+      return initialTournament
+    } else {
+      return emptyTournament('Torneo CSWO')
+    }
+  })
+  
+  useEffect(()=>{
+    saveTournament(t)
+    if (onTournamentChange) {
+      onTournamentChange(t)
+    }
+  }, [t, onTournamentChange])
 
   const byId = useMemo(()=> Object.fromEntries(t.players.map(p=>[p.id,p])) , [t.players])
   const standings = useMemo(()=> calcStandings(t), [t.players, t.rounds])
@@ -143,7 +165,8 @@ export default function App(){
     navigator.clipboard.writeText(url.toString()); alert('Enlace copiado:\\n'+url.toString())
   }
 
-  if(mode==='selector'){
+  // Ya no usamos el modo selector por defecto, pero lo mantenemos para compatibilidad con vistas existentes
+  if(mode==='selector' && !initialTournament){
     return <Selector onCreate={(name)=>{ const nt=emptyTournament(name); saveTournament(nt); setT(nt); setMode('organizer') }}
                      onOpen={(slug)=>{ const nt=getTournament(slug); if(nt){ setT(nt); setMode('organizer') } }}
                      onDelete={(slug)=>{ deleteTournament(slug); location.reload() }} />
@@ -192,7 +215,7 @@ export default function App(){
                 <thead><tr className='table-head'><th>#</th><th>Jugador</th><th>Pts</th><th>W</th><th>D</th><th>L</th><th>OMW%</th></tr></thead>
                 <tbody>{standings.map(p=>(
                   <tr key={p.id} className={`border-b border-white/10 ${p.rank<=3?'bg-cyan-500/10':''}`}>
-                    <td>{p.rank}</td><td>{p.name}</td><td>{p.points}</td><td>{p.wins}</td><td>{p.draws}</td><td>{p.losses}</td><td>{(p.omw*100).toFixed(1)}</td>
+                    <td>{p.rank}</td><td className={p.dropped ? 'line-through text-gray-400' : ''}>{p.name}{p.dropped ? ' (Drop)' : ''}</td><td>{p.points}</td><td>{p.wins}</td><td>{p.draws}</td><td>{p.losses}</td><td>{(p.omw*100).toFixed(1)}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -225,6 +248,68 @@ export default function App(){
               <button className='btn' onClick={genLink}>Generar enlace público</button>
               <button className='btn-ghost' onClick={()=>exportPDF('standings')}>PDF Clasificación</button>
             </div>
+          </div>
+          <div className='flex flex-wrap gap-2 mt-4'>
+            <button className='btn-ghost' onClick={()=>{
+              const name = prompt('Nombre del nuevo torneo:', 'Mi Torneo CSWO');
+              if (name) {
+                const nt = emptyTournament(name);
+                saveTournament(nt);
+                setT(nt);
+              }
+            }}>Nuevo torneo</button>
+            <button className='btn-ghost' onClick={()=>{
+              const tournaments = listTournaments();
+              if (tournaments && tournaments.length > 0) {
+                const selectHTML = tournaments.map(t => 
+                  `<option value="${t.slug}">${t.meta?.name || t.slug} (${new Date(t.updatedAt || 0).toLocaleDateString()})</option>`
+                ).join('');
+                
+                const container = document.createElement('div');
+                container.innerHTML = `
+                  <div style="padding: 10px; max-width: 300px;">
+                    <h3 style="margin-bottom: 10px;">Seleccionar torneo:</h3>
+                    <select id="tournamentSelector" style="width: 100%; padding: 5px; margin-bottom: 10px;">
+                      ${selectHTML}
+                    </select>
+                    <div style="display: flex; justify-content: space-between;">
+                      <button id="loadBtn" style="padding: 5px 10px; background: #0284c7; color: white; border: none; border-radius: 5px;">Cargar</button>
+                      <button id="deleteBtn" style="padding: 5px 10px; background: #ef4444; color: white; border: none; border-radius: 5px;">Eliminar</button>
+                    </div>
+                  </div>
+                `;
+                
+                const modal = document.createElement('div');
+                modal.style = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000;';
+                modal.appendChild(container);
+                document.body.appendChild(modal);
+                
+                modal.addEventListener('click', e => {
+                  if (e.target === modal) document.body.removeChild(modal);
+                });
+                
+                document.getElementById('loadBtn').addEventListener('click', () => {
+                  const select = document.getElementById('tournamentSelector');
+                  const slug = select.value;
+                  const nt = getTournament(slug);
+                  if (nt) {
+                    setT(nt);
+                    document.body.removeChild(modal);
+                  }
+                });
+                
+                document.getElementById('deleteBtn').addEventListener('click', () => {
+                  const select = document.getElementById('tournamentSelector');
+                  const slug = select.value;
+                  if (confirm(`¿Seguro que deseas eliminar el torneo "${select.options[select.selectedIndex].text}"?`)) {
+                    deleteTournament(slug);
+                    document.body.removeChild(modal);
+                  }
+                });
+              } else {
+                alert('No hay torneos guardados.');
+              }
+            }}>Cargar torneo</button>
           </div>
           <div className='grid md:grid-cols-3 gap-3 mt-4'>
             <div>
@@ -272,8 +357,15 @@ export default function App(){
           <ul className='mt-4 grid md:grid-cols-2 gap-2'>
             {t.players.map(p=>(
               <li key={p.id} className='bg-white/5 border border-white/10 rounded-xl px-3 py-2 flex items-center justify-between'>
-                <span>{p.name}</span>
-                <button className='text-sm text-red-300 hover:underline' onClick={()=> setT({...t, players:t.players.filter(x=>x.id!==p.id)})}>Eliminar</button>
+                <span className={p.dropped ? 'line-through text-gray-400' : ''}>{p.name}</span>
+                <div className='flex gap-2'>
+                  <button className={`text-sm ${p.dropped ? 'text-green-300' : 'text-yellow-300'} hover:underline`} 
+                          onClick={()=> setT({...t, players:t.players.map(x=>x.id===p.id ? {...x, dropped: !x.dropped} : x)})}
+                  >
+                    {p.dropped ? 'Reintegrar' : 'Drop'}
+                  </button>
+                  <button className='text-sm text-red-300 hover:underline' onClick={()=> setT({...t, players:t.players.filter(x=>x.id!==p.id)})}>Eliminar</button>
+                </div>
               </li>
             ))}
           </ul>
@@ -325,7 +417,7 @@ export default function App(){
               <thead><tr className='table-head'><th>#</th><th>Jugador</th><th>Pts</th><th>W</th><th>D</th><th>L</th><th>OMW%</th></tr></thead>
               <tbody>{standings.map(p=>(
                 <tr key={p.id} className={`border-b border-white/10 ${p.rank<=3?'bg-cyan-500/10':''}`}>
-                  <td>{p.rank}</td><td>{p.name}</td><td>{p.points}</td><td>{p.wins}</td><td>{p.draws}</td><td>{p.losses}</td><td>{(p.omw*100).toFixed(1)}</td>
+                  <td>{p.rank}</td><td className={p.dropped ? 'line-through text-gray-400' : ''}>{p.name}{p.dropped ? ' (Drop)' : ''}</td><td>{p.points}</td><td>{p.wins}</td><td>{p.draws}</td><td>{p.losses}</td><td>{(p.omw*100).toFixed(1)}</td>
                 </tr>
               ))}</tbody>
             </table>
